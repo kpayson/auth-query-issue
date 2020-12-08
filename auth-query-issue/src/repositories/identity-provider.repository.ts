@@ -4,20 +4,17 @@ import {
   IdentityProvider,
   Tenant
 } from '../models';
-import { AuthCrudRepository } from './auth-crud-repository.repository';
+import { DefaultCrudRepository } from '@loopback/repository';
 import {
   repository,
   BelongsToAccessor
 } from '@loopback/repository';
 
-import {
-
-  TenantRepository
-} from '.';
+import { TenantRepository} from '.';
 
 
 
-export class IdentityProviderRepository extends AuthCrudRepository<
+export class IdentityProviderRepository extends DefaultCrudRepository<
   IdentityProvider,
   typeof IdentityProvider.prototype.id
 > {
@@ -44,15 +41,5 @@ export class IdentityProviderRepository extends AuthCrudRepository<
     this.registerInclusionResolver('tenant', this.tenant.inclusionResolver);
 
   }
-
-
-
-  /**
-   * @description Gets the issuer URI based on the IdP type. The issuer is used to uniquely
-   * identify a user using a combination of their email and the issuer.
-   */
-
-
-
 
 }

@@ -40,12 +40,9 @@ export class TenantController {
       }
     }
   })
-  public async find(
-    @param.filter(Tenant)
-    filter?: Filter<Tenant>
-  ): Promise<Tenant[]> {
+  public async find(): Promise<Tenant[]> {
 
-    return this.tenantRepository.find(filter);
+    return this.tenantRepository.find();
     //return this.userRepository.tenants(this.request.user.sub).find(filter);
   }
 

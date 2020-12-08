@@ -19,10 +19,11 @@ import {
   IdentityProviderRepository,
 
 } from './';
-import { AuthCrudRepository } from './auth-crud-repository.repository';
+import { DefaultCrudRepository } from '@loopback/repository';
 
 
-export class TenantRepository extends AuthCrudRepository<
+
+export class TenantRepository extends DefaultCrudRepository<
   Tenant,
   typeof Tenant.prototype.id
 > {
