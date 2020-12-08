@@ -111,61 +111,6 @@ export class Tenant extends Entity {
     };
   };
 
-  @property({
-    type: 'object',
-    jsonSchema: {
-      type: 'object',
-      certificates: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          x509: {
-            type: 'array',
-            additionalProperties: false,
-            uniqueItems: true,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                fingerprint: {
-                  type: 'string'
-                },
-                valid_from: {
-                  type: 'string'
-                },
-                valid_to: {
-                  type: 'string'
-                },
-                cert: {
-                  type: 'string'
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  })
-  get secretsPublic(): {
-    certificates: {
-      x509: {
-        fingerprint: string;
-        valid_from: string;
-        valid_to: string;
-        cert: string;
-      }[];
-    };
-  } {
-    return {
-      certificates: {
-        x509: (this.secrets?.certificates?.x509 ?? []).map((certificate) => {
-          const valid_from='', valid_to='', fingerprint='' ;
-          const cert = certificate.cert;
-          return { valid_from, valid_to, fingerprint, cert };
-        })
-      }
-    };
-  }
 
   @property({
     type: 'string',

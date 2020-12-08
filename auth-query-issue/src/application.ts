@@ -30,33 +30,19 @@ export class AuthQueryIssueApplication extends BootMixin(
     });
     this.component(RestExplorerComponent);
 
-    this.bind('datasources.config.db').to(
-      {
-        type: 'object',
-        properties: {
-          host: {
-            type: 'string'
-          },
-          database: {
-            type: 'string'
-          },
-          username: {
-            type: 'string'
-          },
-          password: {
-            type: 'string'
-          },
-          socketPath: {
-            type: 'string'
-          }
-        },
-        dependencies: {
-          host: ['username', 'password', 'database'],
-          socketPath: ['database']
-        }
-      }
-
-    );
+    this.bind('datasources.config.db').to({
+      connector: 'mysql',
+      host: process.env.DB_HOST || 'localhost',
+      port: process.env.DB_PORT || 3306,
+      username: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      name: 'db',
+      database: 'labshare',
+      acquireTimeout: 10000,
+      connectTimeout: 10000,
+      connectionLimit: 10,
+      legacyUtcDateProcessing: false,
+    });
 
     // options.auth.MYSQL
 
