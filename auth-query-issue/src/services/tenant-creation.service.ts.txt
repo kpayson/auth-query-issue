@@ -1,0 +1,256 @@
+'use strict';
+
+import { repository } from '@loopback/repository';
+
+import {
+  GroupRepository,
+  TenantRepository,
+  UserRepository,
+  ResourceServerRepository,
+  ClientRepository,
+  RoleRepository,
+  IdentityProviderRepository,
+  PermissionRepository,
+  TenantLoginPageRepository
+} from '../repositories';
+
+import { pickBy } from 'lodash';
+import { DEFAULT_USER_GROUP } from '../enums/default-user-group';
+import { DEFAULT_TENANT_RESOURCE_SERVER } from '../enums';
+import { config } from '@loopback/core';
+
+export class TenantCreationService {
+  constructor(
+    @repository(UserRepository) private userRepository: UserRepository,
+    @repository(GroupRepository) private groupRepository: GroupRepository,
+    @repository(TenantRepository) private tenantRepository: TenantRepository,
+    @repository(TenantLoginPageRepository)
+    private tenantLoginPageRepository: TenantLoginPageRepository,
+    @repository(ResourceServerRepository)
+    private resourceServerRepository: ResourceServerRepository,
+    @repository(ClientRepository) private clientRepository: ClientRepository,
+    @repository(RoleRepository) private roleRepository: RoleRepository,
+    @repository(PermissionRepository)
+    private permissionRepository: PermissionRepository,
+    @repository(IdentityProviderRepository)
+    private identityProviderRepository: IdentityProviderRepository,
+    @config({
+      fromBinding: 'application',
+      propertyPath: 'auth.authRedirect'
+    })
+    private authRedirect: string,
+    @config({
+      fromBinding: 'application',
+      propertyPath: 'rest.basePath'
+    })
+    private basePath: string
+  ) {}
+
+  async createAll(allData, adminUserIds): Promise<number> {
+    const tenantFromAllData = (data) => {
+      const newTenant = {
+        title: data.title,
+        description: data.description,
+        tenantId: data.tenantId,
+        tileConfig: data.tileConfig,
+        notification: data.notification,
+        userAlertSettings: data.userAlertSettings,
+        settings: data.settings,
+        emailSettings: data.emailSettings,
+        activeX509CertificateFingerprint: data.activeX509CertificateFingerprint
+      };
+      return newTenant;
+    };
+
+    const pickClientOnlyData = (clnt) => {
+      return {
+        clientId: clnt.clientId,
+        clientSecret: clnt.clientSecret,
+        name: clnt.name,
+        description: clnt.description,
+        clientUri: clnt.clientUri,
+        config: clnt.config,
+        loginEventSettings: clnt.loginEventSettings,
+        metadata: clnt.metadata,
+        type: clnt.type
+      };
+    };
+
+    const pickRole = (role, clientId) => {
+      return {
+        id: role.id,
+        name: role.name,
+        description: role.description,
+        tenantId: role.tenantId,
+        clientId,
+        isClientRole: role.isClientRole
+      };
+    };
+
+    const tenantData = tenantFromAllData(allData);
+
+    // create tenant
+    const tenant = await this.tenantRepository.create(tenantData);
+
+    //give admin users access to tenant
+    for (const uid of adminUserIds) {
+      await this.userRepository.tenants(uid).link(tenant.id);
+    }
+
+    const createAndMap = async (items: { id: number }[], repo) => {
+      // create the items and return a mapping from the old item id to the newly created copy
+      const hash = {};
+
+      for (const item of items) {
+        const { id, ...newItem } = { ...item, tenantId: tenant.id };
+        const pickedItem = pickBy(newItem); //remove null fields
+        const createdItem = await repo.create(pickedItem);
+        hash[id] = createdItem;
+      }
+
+      return hash;
+    };
+
+    //create providers
+    const providersMap = await createAndMap(
+      allData.identityProviders || [],
+      this.identityProviderRepository
+    );
+
+    // create groups
+    const groupsMap = await createAndMap(
+      allData.groups || [],
+      this.groupRepository
+    );
+    const defaultGroup = (allData.groups || []).find(
+      (grp) => grp.name === DEFAULT_USER_GROUP.NAME
+    );
+    if (defaultGroup) {
+      // add user to admins group
+      const createdGroupId = groupsMap[defaultGroup.id].id;
+
+      for (const uid of adminUserIds) {
+        await this.userRepository.groups(uid).link(createdGroupId);
+      }
+    }
+
+    // update identifer for default resource server
+    const audience = `${this.authRedirect}${this.basePath}/auth/${tenant.tenantId}`;
+
+    const defaultResourceServer = (allData.resourceServers || []).find(
+      (rs) => rs.name === DEFAULT_TENANT_RESOURCE_SERVER.NAME
+    );
+    if (defaultResourceServer) {
+      defaultResourceServer.identifier = audience;
+    }
+
+    // create resource servers
+    const resourceServersMap = await createAndMap(
+      allData.resourceServers || [],
+      this.resourceServerRepository
+    );
+
+    //create tenant login pages
+    await createAndMap(
+      allData.loginPages || [],
+      this.tenantLoginPageRepository
+    );
+
+    for (const clientAllData of allData.clients || []) {
+      const clientOnlyData = pickClientOnlyData(clientAllData);
+
+      // create client record
+      const client = await this.tenantRepository
+        .clients(tenant.id)
+        .create(clientOnlyData);
+
+      // link providers
+      const providerLinker = this.clientRepository.providers(client.id);
+      for (const idp of clientAllData.providers || []) {
+        await providerLinker.link(providersMap[idp.id].id);
+      }
+
+      // link resource servers
+      const resourceServersLinker = this.clientRepository.resourceServers(
+        client.id
+      );
+      for (const resourceServer of clientAllData.resourceServers || []) {
+        await resourceServersLinker.link(
+          resourceServersMap[resourceServer.id].id
+        );
+      }
+
+      // create permissions
+      const clientPermissions = (
+        clientAllData.permissions || []
+      ).map((permission) => ({ ...permission, clientId: client.id }));
+      const permissionsMap = await createAndMap(
+        clientPermissions,
+        this.permissionRepository
+      );
+
+      // create roles
+      const clientRoles = (clientAllData.roles || []).map((role) =>
+        pickRole(role, client.id)
+      );
+      const rolesMap = await createAndMap(clientRoles, this.roleRepository);
+
+      //link permissions to roles
+      for (const role of clientAllData.roles || []) {
+        const createdRole = rolesMap[role.id];
+        const permissionLinker = this.roleRepository.permissions(
+          createdRole.id
+        );
+        for (const permission of role.permissions || []) {
+          const createdPermission = permissionsMap[permission.id];
+          await permissionLinker.link(createdPermission.id);
+        }
+      }
+
+      // link groups to clients
+      const groupsLinker = this.clientRepository.groups(client.id);
+      for (const group of clientAllData.groups || []) {
+        if (!groupsMap[group.id]) {
+          continue;
+        }
+
+        const groupId = groupsMap[group.id].id;
+
+        await groupsLinker.link(groupsMap[group.id].id);
+
+        // link roles to groups
+        const roleLinker = this.groupRepository.roles(groupId);
+        for (const role of group.roles || []) {
+          if (!rolesMap[role.id]) {
+            continue;
+          }
+          const roleId = rolesMap[role.id].id;
+
+          if (roleId) {
+            await roleLinker.link(roleId);
+          }
+        }
+      }
+
+      //saml integrations
+      const samlIntegrationLinker = this.clientRepository.samlIntegrations(
+        client.id
+      );
+      for (const si of clientAllData.samlIntegerations || []) {
+        si.tenantId = tenant.id;
+        si.clientId = client.id;
+        delete si.id;
+        await samlIntegrationLinker.create(si);
+      }
+
+      // create client login pages
+      for (const loginPage of clientAllData.loginPages || []) {
+        loginPage.tenantId = tenant.id;
+        loginPage.clientId = client.id;
+        delete loginPage.id;
+        await this.clientRepository.loginPages(client.id).create(loginPage);
+      }
+    }
+    return tenant.id;
+  }
+}
