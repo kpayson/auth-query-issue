@@ -80,6 +80,7 @@ export class TenantController {
     return this.tenantRepository.findById(tenantId, filter);
   }
 
+
   @get('/auth/admin/tenants/{tenantId}/inMemoryDB', {
     responses: {
       200: {
@@ -89,7 +90,7 @@ export class TenantController {
     }
   })
   public async inMemoryDB(
-    @param.path.number('tenantId') tenantId: number
+    // @param.path.number('tenantId') tenantId: number
   ): Promise<any> {
 
     const toInMemoryFormat = (dataArray:any[]) => {
@@ -100,8 +101,10 @@ export class TenantController {
       return inMemoryData;
     }
 // scope:{fields:{id:true,title:true,tenantId:true}}
-    // const tenantFilter = {where:{id:tenantId}} as Filter<Tenant>;
-    const tenants = await this.tenantRepository.find();
+// fields:{id:true,title:true,tenantId:true}
+    const tenantId = 1;
+    const tenantFilter = {where:{tenantId:'ls'}, fields:{id:true,title:true,tenantId:true}} as Filter<Tenant>;
+    const tenants = await this.tenantRepository.find(tenantFilter);
     const inMemoryTenants = toInMemoryFormat(tenants);
 
     const clientFilter = {where:{tenantId},
@@ -109,7 +112,7 @@ export class TenantController {
         fields:{id:true,clientId:true,name:true},
         include:[ {
           relation: 'providers',
-          scope: {fields:{id:true, clientId:true, identityProviderId:true}}
+          scope: {fields:{id:true, tenantId:true, name:true}}
         }
     ]}};
     const clientsWithProviders = await this.clientRepository.find(clientFilter);
@@ -117,9 +120,9 @@ export class TenantController {
     const clientProviders = clientsWithProviders.flatMap(x=> x.providers);
 
     const inMemoryClients = toInMemoryFormat(clients);
-    const inMemoryClientProviders = toInMemoryFormat(clientProviders);
+    // const inMemoryClientProviders = toInMemoryFormat(clientProviders);
 
-    const identityProvidersFilter = {where:{tenantId},scope:{fields:{id:true,name:true,tenantId:true}}};
+    const identityProvidersFilter = {where:{tenantId},fields:{id:true,name:true,tenantId:true}};
     const identityProviders = await this.identityProviderRepository.find(identityProvidersFilter);
     const inMemoryIdentityProviders = toInMemoryFormat(identityProviders);
 
@@ -134,16 +137,16 @@ export class TenantController {
         Tenant: inMemoryTenants,
         Client: inMemoryClients,
         IdentityProvider: inMemoryIdentityProviders,
-        ClientIdentityProvider: inMemoryClientProviders
+        // ClientIdentityProvider: inMemoryClientProviders
       }
     }
 
-    const fs = require('fs');
-    fs.writeFile('~/inMemDB.json', JSON.stringify(db), (err: any) => {
-        console.log(err);
-    });
+    // const fs = require('fs');
+    // fs.writeFile('~/inMemDB.json', JSON.stringify(db), (err: any) => {
+    //     console.log(err);
+    // });
 
-    return "success";
+    return db;
   }
 
 
