@@ -51,6 +51,7 @@
     "@loopback/rest": "^7.0.1",
     "@loopback/rest-explorer": "^3.0.1",
     "@loopback/service-proxy": "^3.0.1",
+    "@types/lodash": "^4.14.165",
     "lodash": "^4.17.20",
     "loopback-connector-mysql": "^5.4.4",
     "tslib": "^2.0.0"
